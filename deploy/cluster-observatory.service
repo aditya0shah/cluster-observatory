@@ -1,0 +1,18 @@
+[Unit]
+Description=Cluster Observatory
+After=network-online.target
+
+[Service]
+Type=simple
+# Replace with your actual checkout path.
+WorkingDirectory=%h/cluster-observatory
+ExecStart=/usr/bin/python3 %h/cluster-observatory/server.py
+Environment=DASHBOARD_BACKEND=labpc
+Environment=DASHBOARD_BIND=127.0.0.1
+Environment=PYTHONUNBUFFERED=1
+Restart=always
+RestartSec=5
+UMask=0077
+
+[Install]
+WantedBy=default.target
