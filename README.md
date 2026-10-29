@@ -89,6 +89,8 @@ DASHBOARD_BACKEND=labpc \
 python3 server.py
 ```
 
+For a memorable address, use `http://YOUR_TAILSCALE_HOSTNAME:8765` and add that origin to `DASHBOARD_EXTRA_ORIGINS`.
+
 Then open `http://YOUR_TAILSCALE_IP:8765` from a Tailscale-connected device. The dashboard has no application login: restrict network access to trusted devices using your tailnet policy. Avoid a public or all-interface binding. If Tailscale has not started when the service boots, systemd retries the bind.
 
 ## Configuration
@@ -99,6 +101,7 @@ Then open `http://YOUR_TAILSCALE_IP:8765` from a Tailscale-connected device. The
 | `DASHBOARD_BIND` | `127.0.0.1` | Listen address |
 | `DASHBOARD_PORT` | `8765` | HTTP port |
 | `DASHBOARD_ORIGIN` | Derived from bind/port | Browser origin allowed to trigger refresh and storage checks |
+| `DASHBOARD_EXTRA_ORIGINS` | Empty | Comma-separated additional trusted browser origins, such as a Tailscale MagicDNS hostname |
 | `DASHBOARD_KLONE_HOST` | `klone` / `hyak` | SSH alias or helper target |
 | `DASHBOARD_TILLICUM_HOST` | `tillicum` | SSH alias or helper target |
 | `DASHBOARD_CLUSTER_HELPER` | `~/bin/cluster` | Existing helper executable for `labpc` mode |

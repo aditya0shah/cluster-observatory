@@ -16,6 +16,8 @@ if BACKEND not in ('ssh', 'labpc'):
 BIND = os.environ.get('DASHBOARD_BIND', '127.0.0.1')
 PORT = int(os.environ.get('DASHBOARD_PORT', '8765'))
 ORIGIN = os.environ.get('DASHBOARD_ORIGIN', 'http://' + BIND + ':' + str(PORT))
+ALLOWED_ORIGINS = {ORIGIN, 'http://127.0.0.1:' + str(PORT), 'http://localhost:' + str(PORT)}
+ALLOWED_ORIGINS.update(value.strip() for value in os.environ.get('DASHBOARD_EXTRA_ORIGINS', '').split(',') if value.strip())
 HOSTS = {c: os.environ.get('DASHBOARD_' + c.upper() + '_HOST', 'hyak' if BACKEND == 'labpc' and c == 'klone' else c)
          for c in ('klone', 'tillicum')}
 HELPER = Path(os.environ.get('DASHBOARD_CLUSTER_HELPER', str(Path.home() / 'bin/cluster')))
@@ -139,7 +141,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         # Require same-origin custom header: no cross-site form-triggered work.
-        if self.headers.get('X-Dashboard') != '1' or self.headers.get('Origin') not in (None,ORIGIN,'http://127.0.0.1:'+str(PORT),'http://localhost:'+str(PORT)):
+        if self.headers.get('X-Dashboard') != '1' or (self.headers.get('Origin') is not None and self.headers.get('Origin') not in ALLOWED_ORIGINS):
             return self.reply(403, {'error':'Same-origin requests only'})
         parts = urlsplit(self.path).path.strip('/').split('/')
         if len(parts)==3 and parts[0]=='api' and parts[1] in EVENTS and parts[2] in ('refresh','storage'):
