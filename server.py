@@ -15,6 +15,7 @@ if BACKEND not in ('ssh', 'labpc'):
     raise ValueError('DASHBOARD_BACKEND must be ssh or labpc')
 BIND = os.environ.get('DASHBOARD_BIND', '127.0.0.1')
 PORT = int(os.environ.get('DASHBOARD_PORT', '8765'))
+REFRESH_SECONDS = 120
 ORIGIN = os.environ.get('DASHBOARD_ORIGIN', 'http://' + BIND + ':' + str(PORT))
 ALLOWED_ORIGINS = {ORIGIN, 'http://127.0.0.1:' + str(PORT), 'http://localhost:' + str(PORT)}
 ALLOWED_ORIGINS.update(value.strip() for value in os.environ.get('DASHBOARD_EXTRA_ORIGINS', '').split(',') if value.strip())
@@ -89,7 +90,7 @@ def poll(cluster):
             with LOCK:
                 DATA[cluster].update(connected=False, error=str(e), checked_at=now())
                 persist()
-        EVENTS[cluster].wait(30)
+        EVENTS[cluster].wait(REFRESH_SECONDS)
 
 
 def storage_poll(cluster):
@@ -132,7 +133,7 @@ class Handler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path == '/api/status':
             with LOCK:
-                return self.reply(200, dict(clusters=DATA, server_time=now(), refresh_seconds=30, route=ROUTE, backend=BACKEND, login_commands=LOGIN_COMMANDS))
+                return self.reply(200, dict(clusters=DATA, server_time=now(), refresh_seconds=REFRESH_SECONDS, route=ROUTE, backend=BACKEND, login_commands=LOGIN_COMMANDS))
         files = {'/':('index.html','text/html; charset=utf-8'), '/app.js':('app.js','text/javascript'), '/style.css':('style.css','text/css'), '/terminal.css':('terminal.css','text/css')}
         if path in files:
             name, mime = files[path]

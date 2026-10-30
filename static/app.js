@@ -57,13 +57,15 @@ function storageMarkup(storage){
 function render(){
  if(!data)return;
  document.querySelector('.aside-bottom small').textContent=data.route+' · read only';
- const c=data.clusters[cluster], s=c.snapshot, stale=!c.connected || !s || Date.now()-Date.parse(s.collected_at)>90000;
+ const refreshSeconds=data.refresh_seconds||120;
+ const refreshLabel=refreshSeconds%60===0?`${refreshSeconds/60} min`:`${refreshSeconds}s`;
+ const c=data.clusters[cluster], s=c.snapshot, stale=!c.connected || !s || Date.now()-Date.parse(s.collected_at)>refreshSeconds*3000;
  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.cluster===cluster));
  for(const k of ['klone','tillicum']) $('dot-'+k).classList.toggle('online',!!data.clusters[k].connected);
  $('title').textContent=cluster==='klone'?'Klone':'Tillicum';
  $('subtitle').textContent=s?`${s.user} · ${s.host} · Your cluster at a glance`:'Your cluster at a glance';
  $('connection').className=stale?'warning':'';
- $('connection').innerHTML=stale?`<strong>${c.connected?'Reading is stale':'Cluster connection unavailable'}</strong> · ${s?'Showing last successful data from '+esc(age(s.collected_at))+'.':'Waiting for your first authenticated session.'}<br>${esc(c.error || 'Waiting for the next successful update.')}<br>Authenticate in a ${data.backend==='labpc'?'lab PC':'server host'} terminal:<br><code>${esc(data.login_commands?.[cluster]||'Reconnect SSH')}</code>`:`<span class="status-dot"></span>Live · ${esc(data.route)} · Updated ${esc(age(s.collected_at))} · Refreshes every 30 seconds`;
+ $('connection').innerHTML=stale?`<strong>${c.connected?'Reading is stale':'Cluster connection unavailable'}</strong> · ${s?'Showing last successful data from '+esc(age(s.collected_at))+'.':'Waiting for your first authenticated session.'}<br>${esc(c.error || 'Waiting for the next successful update.')}<br>Authenticate in a ${data.backend==='labpc'?'lab PC':'server host'} terminal:<br><code>${esc(data.login_commands?.[cluster]||'Reconnect SSH')}</code>`:`<span class="status-dot"></span>Live · ${esc(data.route)} · Updated ${esc(age(s.collected_at))} · Refreshes every ${refreshLabel}`;
  const u=s?.usage;
  $('metrics').innerHTML=[['Nodes in use',u?.nodes,'Distinct allocated nodes'],['GPUs allocated',u?.gpus,'Your active jobs'],['CPUs allocated',u?.cpus,'Your active jobs'],['Running jobs',u?.running,'Including completing / suspended'],['Pending jobs',u?.pending,'Waiting in the queue']].map(([a,b,d])=>`<div class="metric"><div class="metric-label">${a}</div><div class="metric-value">${b??'—'}</div><div class="metric-sub">${d}</div></div>`).join('');
  const jobs=(s?.jobs||[]).filter(j=>Object.values(j).join(' ').toLowerCase().includes($('job-search').value.toLowerCase()));
@@ -101,7 +103,7 @@ function render(){
  $('storage-time').textContent=c.storage?`Last checked ${age(c.storage.collected_at)} · on demand`:'Check on demand · no directory scans';
  $('storage-results').innerHTML=(c.storage_error?`<p class="warning">${esc(c.storage_error)}</p>`:'')+storageMarkup(c.storage);
  $('recent').innerHTML=(s?.recent||[]).slice().reverse().map(j=>`<tr><td>${esc(j.id)}</td><td>${esc(j.name)}</td><td>${badge(j.state)}</td><td>${esc(j.elapsed)}</td><td>${esc(j.exit_code)}</td></tr>`).join('')||'<tr><td colspan="5" class="empty">No recent accounting records available.</td></tr>';
- $('updated').textContent=`30s polling · Last successful reading: ${s?age(s.collected_at):'never'}`;
+ $('updated').textContent=`${refreshLabel} polling · Last successful reading: ${s?age(s.collected_at):'never'}`;
 }
 async function load(){try{const r=await fetch('/api/status');if(!r.ok)throw Error('Server returned '+r.status);data=await r.json();render();}catch(e){$('connection').className='warning';$('connection').textContent='Local server unreachable. Retrying automatically…';}}
 async function action(name){try{const r=await fetch(`/api/${cluster}/${name}`,{method:'POST',headers:{'X-Dashboard':'1'}});if(!r.ok)throw Error('Request failed');await load();}catch(e){$('connection').className='warning';$('connection').textContent=e.message;}}

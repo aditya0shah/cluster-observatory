@@ -111,7 +111,7 @@ Environment variables must be exported or supplied to the process; no `.env` fil
 
 ## Reading the metrics
 
-Snapshots refresh every 30 seconds; browsers read the cache every 5 seconds. Closing the browser does not stop the server. Running on an always-on host keeps monitoring independent of your laptop.
+Snapshots refresh every 2 minutes; browsers read the cache every 5 seconds. Closing the browser does not stop the server. Running on an always-on host keeps monitoring independent of your laptop.
 
 GPU/CPU metrics represent allocations, not hardware utilization. Distinct nodes exclude pending jobs and count a shared node once. Completing and suspended jobs are included as active allocations.
 
