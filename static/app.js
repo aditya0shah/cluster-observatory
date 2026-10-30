@@ -94,7 +94,7 @@ function render(){
   if(n.schedulable)pool.free+=Math.max(0,n.gpus-n.allocated_gpus);
  }
  if(Object.keys(checkpointModels).length){
-  $('availability').innerHTML+=`<div class="checkpoint-summary"><span class="badge">SHARED / PREEMPTIBLE</span><strong>Checkpoint GPU pool</strong>${Object.entries(checkpointModels).sort(([a],[b])=>a.localeCompare(b)).map(([model,pool])=>`<span>${esc(model)}: ${pool.free} / ${pool.total} GPUs free</span>`).join('')}<p>A40 / L40 and newer GPU classes only. Outside your owned allocation; shared jobs can be interrupted. Accounts: ${esc((s.accounts||[]).filter(([a])=>a.startsWith('ckpt-')).map(([a])=>a).join(', ')||'No checkpoint associations reported')}.</p></div>`;
+  $('availability').innerHTML+=`<div class="checkpoint-summary"><span class="badge">SHARED / PREEMPTIBLE</span><strong>Checkpoint GPU pool</strong>${Object.entries(checkpointModels).sort(([a],[b])=>a.localeCompare(b)).map(([model,pool])=>`<span class="checkpoint-resource">${esc(model)}: ${pool.free} / ${pool.total} GPUs free</span>`).join('')}<p>A40 / L40 and newer GPU classes only. Outside your owned allocation; shared jobs can be interrupted. Accounts: ${esc((s.accounts||[]).filter(([a])=>a.startsWith('ckpt-')).map(([a])=>a).join(', ')||'No checkpoint associations reported')}.</p></div>`;
  }
  $('accounts').innerHTML=(s?.accounts||[]).map(([a,p,q])=>`<div class="account">${esc(a)}<span class="secondary">${esc(p||'No partition restriction in association')} · QoS: ${esc(q||'—')}</span></div>`).join('')||'<div class="empty">No associations available.</div>';
  if(s?.warnings?.length)$('accounts').innerHTML+=`<p>${s.warnings.map(esc).join('<br>')}</p>`;
