@@ -10,6 +10,7 @@ Python standard library only. No frontend build, database, cloud service, or API
 - Job queue, distinct allocated nodes, allocated GPUs/CPUs, pending reasons, and recent accounting records.
 - Account-specific allocation tables from `hyakalloc`: total allocation, account usage, your usage, and remaining resources.
 - A40, L40/L40S, A100, H100/H200 and newer GPU classes; shared checkpoint capacity appears separately.
+- Weirdlab GPU activity grouped by user, with account/checkpoint counts per GPU type and expandable job/node details.
 - On-demand storage checks with personal usage, quota percentages, account totals, and expandable raw reports.
 - Read-only queries. No job submission, cancellation, credential collection, or recursive filesystem scans.
 
@@ -114,6 +115,8 @@ Environment variables must be exported or supplied to the process; no `.env` fil
 Snapshots refresh every 2 minutes; browsers read the cache every 5 seconds. Closing the browser does not stop the server. Running on an always-on host keeps monitoring independent of your laptop.
 
 GPU/CPU metrics represent allocations, not hardware utilization. Distinct nodes exclude pending jobs and count a shared node once. Completing and suspended jobs are included as active allocations.
+
+Weirdlab activity uses one account-filtered `squeue --json` request per snapshot and shows active GPU allocations charged to Weirdlab accounts. Counts come from allocated TRES, including multi-node totals and jobs requesting GPUs per job. GPU types come from allocation records, GRES detail or a known single node; unresolved types remain explicit. Older GPU classes and CPU-only jobs are omitted from the panel. Checkpoint jobs appear separately. This identifies account jobs, not physical ownership of a particular GPU. Expanded user rows stay open as cached data refreshes.
 
 `hyakalloc` account totals are shared across account members. Your CPU/GPU usage is matched to exact partition-account associations. Your memory allocation is not inferred. Free account capacity does not guarantee a job will start: memory, job size, QoS and scheduler policies also matter. If account figures are unavailable, no cluster-wide substitute is shown.
 

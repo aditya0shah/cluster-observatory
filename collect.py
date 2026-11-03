@@ -49,6 +49,62 @@ def parse_allocations(output):
     return [a for a in allocations if all(k in a for k in ('total','used','free'))]
 
 
+def parse_weirdlab_jobs(records, account_names, nodes):
+    """Use allocated TRES, never pending requests or per-node request counts."""
+    allowed = set(account_names)
+    node_by_name = {n['name']: n for n in nodes}
+    jobs = []
+    for record in records:
+        account = record.get('account', '')
+        states = record.get('job_state') or []
+        if isinstance(states, str):
+            states = [states]
+        state = next((s for s in states if s in ('RUNNING', 'COMPLETING', 'SUSPENDED')), None)
+        if account not in allowed or not state:
+            continue
+        allocated = record.get('tres_alloc_str') or ''
+        types = {}
+        for entry in allocated.split(','):
+            key, _, value = entry.partition('=')
+            if key.startswith('gres/gpu:') and value.isdigit():
+                model = key[len('gres/gpu:'):].upper()
+                types[model] = types.get(model, 0) + int(value)
+        total = tres(allocated, 'gres/gpu') or sum(types.values())
+        if not total:
+            continue
+        if not types:
+            for detail in record.get('gres_detail') or []:
+                for model, count in re.findall(r'gpu:([^:(),]+):(\d+)', detail):
+                    types[model.upper()] = types.get(model.upper(), 0) + int(count)
+        nodelist = record.get('nodes') or ''
+        if not types and nodelist in node_by_name:
+            match = re.search(r'gpu:([^:(),]+):\d+', node_by_name[nodelist].get('gres', ''))
+            if match:
+                types[match.group(1).upper()] = total
+        if sum(types.values()) != total:
+            types = {'UNKNOWN': total}
+        jobs.append(dict(id=str(record.get('job_id', '')), user=record.get('user_name') or 'Unknown',
+                         name=record.get('name') or '', state=state, account=account,
+                         partition=record.get('partition') or '', nodelist=nodelist,
+                         gpus=total, gpu_types=types,
+                         scope='checkpoint' if account.startswith('ckpt-') else 'account'))
+    return jobs
+
+
+def weirdlab_activity(accounts, nodes):
+    names = sorted(set(a[0] for a in accounts if a[0] == 'weirdlab' or a[0].endswith('-weirdlab')))
+    if not names:
+        return dict(jobs=[], error=None)
+    try:
+        result = json.loads(run(['squeue', '--accounts=' + ','.join(names),
+                                 '--states=RUNNING,COMPLETING,SUSPENDED', '--json'], 25))
+        if result.get('errors'):
+            raise RuntimeError('Slurm could not return Weirdlab GPU activity.')
+        return dict(jobs=parse_weirdlab_jobs(result.get('jobs', []), names, nodes), error=None)
+    except Exception as e:
+        return dict(jobs=[], error=str(e))
+
+
 def snapshot():
     user = getpass.getuser()
     jobs = []
@@ -102,13 +158,14 @@ def snapshot():
     except Exception as e:
         recent = []
         warnings.append(str(e))
+    lab_activity = weirdlab_activity(accounts, nodes)
     running = [j for j in jobs if j['state'] in ['RUNNING','COMPLETING','SUSPENDED']]
     expanded = set()
     for nodelist in set(j['nodelist'] for j in running):
         if nodelist and nodelist != '(null)':
             expanded.update(run(['scontrol','show','hostnames',nodelist]).splitlines())
     return dict(user=user, host=socket.gethostname(), collected_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                jobs=jobs, nodes=nodes, accounts=accounts, allocations=allocations, allocation_error=allocation_error, checkpoint=checkpoint, recent=recent, warnings=warnings,
+                jobs=jobs, nodes=nodes, accounts=accounts, weirdlab_gpu_activity=lab_activity, allocations=allocations, allocation_error=allocation_error, checkpoint=checkpoint, recent=recent, warnings=warnings,
                 usage=dict(nodes=len(expanded), cpus=sum(j['cpus'] for j in running), gpus=sum(j['gpus'] for j in running),
                            running=len(running), pending=sum(j['state']=='PENDING' for j in jobs)))
 

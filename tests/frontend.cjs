@@ -24,4 +24,20 @@ context.reports = [{command:'hyakstorage', output:'│ /gpfs/projects/lab │\n�
 assert.equal(evaluate('parseStorage(reports).personal[0].sharedLimit'), '1T');
 assert.equal(evaluate('parseStorage(reports).personal[0].limit'), null);
 assert(evaluate('storageMarkup({reports}).includes("shared account quota")'));
+context.activity = {jobs:[
+  {user:'alice',id:'1',name:'train <phase>',state:'RUNNING',account:'gpu-a40-weirdlab',partition:'gpu-a40',nodelist:'g1',scope:'account',gpu_types:{A40:2}},
+  {user:'alice',id:'2',name:'checkpoint job',state:'RUNNING',account:'ckpt-weirdlab',partition:'ckpt-all',nodelist:'g2',scope:'checkpoint',gpu_types:{L40S:1}},
+  {user:'bob',id:'3',name:'old GPU',state:'RUNNING',scope:'account',gpu_types:{P100:4}},
+  {user:'carol',id:'4',name:'multi-node',state:'SUSPENDED',account:'weirdlab',partition:'gpu',nodelist:'g[3-4]',scope:'account',gpu_types:{H200:8}},
+]};
+const markup=evaluate("weirdlabMarkup(activity,'alice',new Set(['klone:alice']))");
+assert(markup.includes('<strong>2</strong> people'));
+assert(markup.includes('<strong>10</strong> account GPUs'));
+assert(markup.includes('<strong>1</strong> checkpoint GPUs'));
+assert(markup.includes('data-user="klone:alice" open'));
+assert(markup.includes('train &lt;phase&gt;'));
+assert(markup.includes('YOU'));
+assert(!markup.includes('old GPU'));
+assert(evaluate("weirdlabMarkup({jobs:[]},'alice')").includes('No active Weirdlab jobs'));
+assert(evaluate("weirdlabMarkup({error:'no access'},'alice')").includes('activity unavailable'));
 console.log('Frontend checks passed.');

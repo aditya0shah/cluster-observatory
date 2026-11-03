@@ -17,6 +17,39 @@ class CollectorTests(unittest.TestCase):
         self.assertEqual(rows[1]['total']['gpus'], 4)
         self.assertEqual(collect.parse_allocations('no allocation data'), [])
 
+    def test_weirdlab_allocated_gpu_counts_and_scope(self):
+        records = [
+            dict(job_id=1, user_name='alice', account='gpu-a40-weirdlab', job_state=['RUNNING'],
+                 tres_alloc_str='gres/gpu=6,gres/gpu:a40=6', nodes='g[1-2]'),
+            dict(job_id=2, user_name='alice', account='ckpt-weirdlab', job_state=['COMPLETING'],
+                 tres_alloc_str='gres/gpu=2', gres_detail=['gpu:l40s:2(IDX:0-1)'], nodes='g3'),
+            dict(job_id=3, account='weirdlab', job_state='SUSPENDED',
+                 tres_alloc_str='gres/gpu=1', nodes='g4'),
+            dict(job_id=4, account='gpu-a40-weirdlab', job_state=['PENDING'],
+                 tres_req_str='gres/gpu=8', tres_alloc_str=''),
+            dict(job_id=5, account='otherlab', job_state=['RUNNING'], tres_alloc_str='gres/gpu=8'),
+            dict(job_id=6, account='weirdlab', job_state=['RUNNING'], tres_alloc_str='cpu=8'),
+            dict(job_id=7, account='weirdlab', job_state=['RUNNING'],
+                 tres_alloc_str='gres/gpu=4', gres_detail=['gpu:a40:1(IDX:0)']),
+        ]
+        rows = collect.parse_weirdlab_jobs(records,
+            ['gpu-a40-weirdlab', 'ckpt-weirdlab', 'weirdlab'],
+            [dict(name='g4', gres='gpu:h200:8')])
+        self.assertEqual([r['id'] for r in rows], ['1', '2', '3', '7'])
+        self.assertEqual(rows[0]['gpus'], 6)  # Already a job total, not per-node.
+        self.assertEqual(rows[0]['gpu_types'], {'A40': 6})
+        self.assertEqual(rows[1]['scope'], 'checkpoint')
+        self.assertEqual(rows[1]['gpu_types'], {'L40S': 2})
+        self.assertEqual(rows[2]['gpu_types'], {'H200': 1})
+        self.assertEqual(rows[3]['gpu_types'], {'UNKNOWN': 4})
+
+    def test_activity_failure_does_not_fail_snapshot(self):
+        with patch.object(collect, 'run', side_effect=RuntimeError('access unavailable')):
+            activity = collect.weirdlab_activity([['weirdlab', '', 'normal']], [])
+        self.assertEqual(activity['jobs'], [])
+        self.assertEqual(activity['error'], 'access unavailable')
+
+
     def test_distinct_nodes_and_pending_exclusion(self):
         def run(args, timeout=18):
             if args[0] == 'squeue':

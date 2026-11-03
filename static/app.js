@@ -54,6 +54,32 @@ function storageMarkup(storage){
  const raw=storage?.reports?.length?`<details class="storage-raw"><summary>Full quota report & filesystem capacity</summary>${storage.reports.map(r=>`<h3>${esc(r.command||'Storage check')}</h3><pre>${esc(r.output||r.error)}</pre>`).join('')}</details>`:'';
  return summary+quotas+raw;
 }
+function weirdlabMarkup(activity,currentUser,openUsers=new Set()){
+ if(!activity)return '<div class="empty">Waiting for Weirdlab GPU activity…</div>';
+ if(activity.error)return `<div class="empty">Weirdlab activity unavailable: ${esc(activity.error)}</div>`;
+ const people=new Map();
+ for(const job of activity.jobs||[]){
+  const types=Object.entries(job.gpu_types||{}).filter(([model])=>model==='UNKNOWN'||supportedGpu('gpu-'+model));
+  if(!types.length)continue;
+  if(!people.has(job.user))people.set(job.user,{user:job.user,jobs:[],models:{},account:0,checkpoint:0});
+  const person=people.get(job.user),scope=job.scope==='checkpoint'?'checkpoint':'account';
+  const gpus=types.reduce((sum,[,count])=>sum+count,0);
+  person[scope]+=gpus;
+  person.jobs.push({...job,gpu_types:Object.fromEntries(types),gpus});
+  for(const [model,count] of types){
+   (person.models[model] ||= {account:0,checkpoint:0})[scope]+=count;
+  }
+ }
+ const users=[...people.values()].sort((a,b)=>(b.account+b.checkpoint)-(a.account+a.checkpoint)||a.user.localeCompare(b.user));
+ if(!users.length)return '<div class="empty">No active Weirdlab jobs on the displayed GPU classes.</div>';
+ const owned=users.reduce((n,p)=>n+p.account,0),checkpoint=users.reduce((n,p)=>n+p.checkpoint,0);
+ return `<div class="lab-overview"><span><strong>${users.length}</strong> people</span><span><strong>${owned}</strong> account GPUs</span><span><strong>${checkpoint}</strong> checkpoint GPUs</span><span class="lab-hint">Expand a person for jobs & nodes</span></div><div class="lab-people">${users.map(p=>{
+  const key=cluster+':'+p.user;
+  const models=Object.entries(p.models).sort(([a],[b])=>a.localeCompare(b));
+  const scopeLine=(scope,label)=>p[scope]?`<div class="lab-model-line"><span class="lab-scope ${scope}">${label}</span>${models.filter(([,counts])=>counts[scope]).map(([model,counts])=>`<span class="lab-gpu-chip ${scope}">${esc(model==='UNKNOWN'?'GPU type unknown':model)} <strong>×${counts[scope]}</strong></span>`).join('')}</div>`:'';
+  return `<details class="lab-person ${p.user===currentUser?'is-you':''}" data-user="${esc(key)}"${openUsers.has(key)?' open':''}><summary><span class="lab-identity"><span class="lab-avatar" aria-hidden="true">${esc(p.user.slice(0,2).toUpperCase())}</span><span><strong>${esc(p.user)}</strong>${p.user===currentUser?'<span class="lab-you">YOU</span>':''}<span class="secondary">${p.jobs.length} active ${p.jobs.length===1?'job':'jobs'}</span></span></span><span class="lab-models">${scopeLine('account','Account')}${scopeLine('checkpoint','Checkpoint')}</span><span class="lab-person-total"><strong>${p.account+p.checkpoint}</strong><span>GPUs</span></span><span class="lab-chevron" aria-hidden="true">›</span></summary><div class="table-wrap lab-job-details"><table><thead><tr><th>Job</th><th>GPUs</th><th>State</th><th>Nodes</th><th>Slurm account</th></tr></thead><tbody>${p.jobs.map(j=>`<tr><td><span class="job-name">${esc(j.name)}</span><span class="secondary">${esc(j.id)}</span></td><td>${Object.entries(j.gpu_types).map(([model,count])=>`${count} ${esc(model==='UNKNOWN'?'GPU (type unknown)':model)}`).join('<br>')}</td><td>${badge(j.state)}</td><td>${esc(j.nodelist||'—')}</td><td>${esc(j.account)}<span class="secondary">${esc(j.partition)}</span></td></tr>`).join('')}</tbody></table></div></details>`;
+ }).join('')}</div>`;
+}
 function render(){
  if(!data)return;
  document.querySelector('.aside-bottom small').textContent=data.route+' · read only';
@@ -96,6 +122,8 @@ function render(){
  if(Object.keys(checkpointModels).length){
   $('availability').innerHTML+=`<div class="checkpoint-summary"><span class="badge">SHARED / PREEMPTIBLE</span><strong>Checkpoint GPU pool</strong>${Object.entries(checkpointModels).sort(([a],[b])=>a.localeCompare(b)).map(([model,pool])=>`<span class="checkpoint-resource">${esc(model)}: ${pool.free} / ${pool.total} GPUs free</span>`).join('')}<p>A40 / L40 and newer GPU classes only. Outside your owned allocation; shared jobs can be interrupted. Accounts: ${esc((s.accounts||[]).filter(([a])=>a.startsWith('ckpt-')).map(([a])=>a).join(', ')||'No checkpoint associations reported')}.</p></div>`;
  }
+ const openLabUsers=new Set([...document.querySelectorAll('#weirdlab-activity details[open]')].map(el=>el.dataset.user));
+ $('weirdlab-activity').innerHTML=weirdlabMarkup(s?.weirdlab_gpu_activity,s?.user,openLabUsers);
  $('accounts').innerHTML=(s?.accounts||[]).map(([a,p,q])=>`<div class="account">${esc(a)}<span class="secondary">${esc(p||'No partition restriction in association')} · QoS: ${esc(q||'—')}</span></div>`).join('')||'<div class="empty">No associations available.</div>';
  if(s?.warnings?.length)$('accounts').innerHTML+=`<p>${s.warnings.map(esc).join('<br>')}</p>`;
  $('storage').disabled=!!c.storage_loading;
