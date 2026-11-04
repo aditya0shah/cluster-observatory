@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import socket
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
@@ -113,6 +114,11 @@ def storage_poll(cluster):
 
 
 class Handler(BaseHTTPRequestHandler):
+    def setup(self):
+        super().setup()
+        # Keep small page responses from coalescing into a stalled tailnet packet.
+        self.connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+
     def log_message(self, fmt, *args):
         if args and str(args[1] if len(args)>1 else '') != '200':
             super().log_message(fmt, *args)
@@ -127,7 +133,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('X-Content-Type-Options','nosniff')
         self.send_header('Content-Security-Policy',"default-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'")
         self.end_headers()
-        self.wfile.write(body)
+        for offset in range(0, len(body), 1024):
+            self.wfile.write(body[offset:offset + 1024])
 
     def do_GET(self):
         path = urlsplit(self.path).path
