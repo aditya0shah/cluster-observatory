@@ -113,6 +113,14 @@ def storage_poll(cluster):
                 persist()
 
 
+class DashboardServer(ThreadingHTTPServer):
+    def server_bind(self):
+        # Leave headroom for tailnet paths with a smaller effective packet size.
+        if hasattr(socket, 'TCP_MAXSEG'):
+            self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_MAXSEG, 1024)
+        super().server_bind()
+
+
 class Handler(BaseHTTPRequestHandler):
     def setup(self):
         super().setup()
@@ -171,4 +179,4 @@ if __name__ == '__main__':
         threading.Thread(target=poll, args=(cluster,), daemon=True).start()
         threading.Thread(target=storage_poll, args=(cluster,), daemon=True).start()
     print('Hyak Dashboard: ' + ORIGIN, flush=True)
-    ThreadingHTTPServer((BIND,PORT), Handler).serve_forever()
+    DashboardServer((BIND,PORT), Handler).serve_forever()
