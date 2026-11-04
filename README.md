@@ -131,3 +131,25 @@ python3 -m unittest discover -s tests
 node --check static/app.js
 node tests/frontend.cjs
 ```
+
+## Optional SSH packet-size workaround
+
+If ordinary SSH over the tailnet intermittently stalls on small transfers, [deploy/tailnet-ssh-proxy.py](deploy/tailnet-ssh-proxy.py) provides a user-space transport on port 2222 with TCP segments limited to 1024 bytes. It forwards only to the host's existing OpenSSH server on `127.0.0.1:22`; SSH encryption, authentication and host-key checks remain handled by OpenSSH.
+
+```sh
+python3 deploy/tailnet-ssh-proxy.py --bind YOUR_TAILSCALE_IP --port 2222
+```
+
+An optional [user service](deploy/tailnet-ssh-proxy.service) can keep this transport running. Set its checkout path and Tailscale address before enabling it. On the client, configure a separate SSH alias:
+
+```sshconfig
+Host labpc-ts
+    HostName YOUR_TAILSCALE_IP
+    User YOUR_LABPC_USERNAME
+    Port 2222
+    HostKeyAlias YOUR_TAILSCALE_IP
+    ServerAliveInterval 15
+    ServerAliveCountMax 6
+```
+
+`HostKeyAlias` reuses the host key already verified for the same server on its standard port. Verify that key normally if this is your first connection. This workaround addresses per-connection packet delivery; it does not diagnose or change the underlying Tailscale, operating-system or network configuration.

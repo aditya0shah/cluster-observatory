@@ -1,0 +1,14 @@
+[Unit]
+Description=Smaller-packet SSH transport over Tailscale
+After=network-online.target
+
+[Service]
+Type=simple
+# Replace YOUR_TAILSCALE_IP and the checkout path for your host.
+ExecStart=/usr/bin/python3 %h/cluster-observatory/deploy/tailnet-ssh-proxy.py --bind YOUR_TAILSCALE_IP --port 2222
+Restart=always
+RestartSec=5
+UMask=0077
+
+[Install]
+WantedBy=default.target
