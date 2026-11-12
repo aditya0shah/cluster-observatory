@@ -1,0 +1,37 @@
+import unittest
+from snapshot_cache import merge_snapshot
+
+
+class SnapshotCacheTests(unittest.TestCase):
+    def test_failed_panels_keep_last_success_without_marking_it_fresh(self):
+        old = dict(collected_at='old', allocations=[{'account': 'lab'}],
+                   allocation_error=None, weirdlab_gpu_activity={'jobs': [{'id': '1'}], 'error': None})
+        failed = dict(collected_at='new', allocations=[], allocation_error='timeout',
+                      weirdlab_gpu_activity={'jobs': [], 'error': 'timeout'})
+        result = merge_snapshot(old, failed)
+        self.assertEqual(result['allocations'], old['allocations'])
+        self.assertEqual(result['allocations_collected_at'], 'old')
+        self.assertEqual(result['weirdlab_gpu_activity']['jobs'], [{'id': '1'}])
+        self.assertEqual(result['weirdlab_gpu_activity']['collected_at'], 'old')
+        self.assertEqual(result['weirdlab_gpu_activity']['error'], 'timeout')
+        again = merge_snapshot(result, dict(failed, collected_at='later'))
+        self.assertEqual(again['allocations_collected_at'], 'old')
+        self.assertEqual(again['weirdlab_gpu_activity']['collected_at'], 'old')
+
+    def test_successful_empty_result_clears_old_jobs(self):
+        old = dict(collected_at='old', allocations=[{'account': 'lab'}],
+                   weirdlab_gpu_activity={'jobs': [{'id': '1'}], 'error': None})
+        current = dict(collected_at='new', allocations=[], allocation_error=None,
+                       weirdlab_gpu_activity={'jobs': [], 'error': None})
+        result = merge_snapshot(old, current)
+        self.assertEqual(result['allocations'], [])
+        self.assertEqual(result['allocations_collected_at'], 'new')
+        self.assertEqual(result['weirdlab_gpu_activity']['jobs'], [])
+        self.assertEqual(result['weirdlab_gpu_activity']['collected_at'], 'new')
+
+    def test_first_failure_never_gets_a_success_timestamp(self):
+        failed = dict(collected_at='new', allocations=[], allocation_error='timeout',
+                      weirdlab_gpu_activity={'jobs': [], 'error': 'timeout'})
+        result = merge_snapshot(None, failed)
+        self.assertNotIn('allocations_collected_at', result)
+        self.assertNotIn('collected_at', result['weirdlab_gpu_activity'])

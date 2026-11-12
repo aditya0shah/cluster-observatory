@@ -54,9 +54,15 @@ function storageMarkup(storage){
  const raw=storage?.reports?.length?`<details class="storage-raw"><summary>Full quota report & filesystem capacity</summary>${storage.reports.map(r=>`<h3>${esc(r.command||'Storage check')}</h3><pre>${esc(r.output||r.error)}</pre>`).join('')}</details>`:'';
  return summary+quotas+raw;
 }
+function componentNotice(label,error,collectedAt){
+ if(!error)return '';
+ const message=String(error).includes('timed out')?'The cluster query timed out.':String(error);
+ return `<div class="component-warning"><strong>${esc(label)} refresh delayed</strong><span>${esc(message)} Retrying automatically.</span><span>${collectedAt?'Showing the last successful reading from '+esc(age(collectedAt))+'.':'No successful reading is available yet.'}</span></div>`;
+}
 function weirdlabMarkup(activity,currentUser,openUsers=new Set()){
  if(!activity)return '<div class="empty">Waiting for Weirdlab GPU activity…</div>';
- if(activity.error)return `<div class="empty">Weirdlab activity unavailable: ${esc(activity.error)}</div>`;
+ const notice=componentNotice('GPU activity',activity.error,activity.collected_at);
+ if(activity.error&&!activity.collected_at)return notice;
  const people=new Map();
  for(const job of activity.jobs||[]){
   const types=Object.entries(job.gpu_types||{}).filter(([model])=>model==='UNKNOWN'||supportedGpu('gpu-'+model));
@@ -71,9 +77,9 @@ function weirdlabMarkup(activity,currentUser,openUsers=new Set()){
   }
  }
  const users=[...people.values()].sort((a,b)=>(b.account+b.checkpoint)-(a.account+a.checkpoint)||a.user.localeCompare(b.user));
- if(!users.length)return '<div class="empty">No active Weirdlab jobs on the displayed GPU classes.</div>';
+ if(!users.length)return notice+'<div class="empty">No active Weirdlab jobs on the displayed GPU classes.</div>';
  const owned=users.reduce((n,p)=>n+p.account,0),checkpoint=users.reduce((n,p)=>n+p.checkpoint,0);
- return `<div class="lab-overview"><span><strong>${users.length}</strong> people</span><span><strong>${owned}</strong> account GPUs</span><span><strong>${checkpoint}</strong> checkpoint GPUs</span><span class="lab-hint">Expand a person for jobs & nodes</span></div><div class="lab-people">${users.map(p=>{
+ return notice+`<div class="lab-overview"><span><strong>${users.length}</strong> people</span><span><strong>${owned}</strong> account GPUs</span><span><strong>${checkpoint}</strong> checkpoint GPUs</span><span class="lab-hint">Expand a person for jobs & nodes</span></div><div class="lab-people">${users.map(p=>{
   const key=cluster+':'+p.user;
   const models=Object.entries(p.models).sort(([a],[b])=>a.localeCompare(b));
   const scopeLine=(scope,label)=>p[scope]?`<div class="lab-model-line"><span class="lab-scope ${scope}">${label}</span>${models.filter(([,counts])=>counts[scope]).map(([model,counts])=>`<span class="lab-gpu-chip ${scope}">${esc(model==='UNKNOWN'?'GPU type unknown':model)} <strong>×${counts[scope]}</strong></span>`).join('')}</div>`:'';
@@ -102,7 +108,7 @@ function render(){
   if(!allocation.total.gpus || !supportedGpu(allocation.partition))continue;
   (groups[allocation.account] ||= []).push(allocation);
  }
- $('availability').innerHTML=Object.entries(groups).sort(([a],[b])=>a.localeCompare(b)).map(([account,rows])=>{
+ $('availability').innerHTML=componentNotice('Account availability',s?.allocation_error,s?.allocations_collected_at)+(Object.entries(groups).sort(([a],[b])=>a.localeCompare(b)).map(([account,rows])=>{
   const sum=(key,resource)=>rows.reduce((n,a)=>n+a[key][resource],0);
   return `<section class="allocation-group"><div class="allocation-group-head"><h3>${esc(account)}</h3><span>${sum('free','gpus')} / ${sum('total','gpus')} GPUs free · ${sum('free','cpus')} / ${sum('total','cpus')} CPUs free</span></div><div class="table-wrap"><table class="allocation-table"><thead><tr><th>Partition / Slurm account</th><th>Resource</th><th>Total allocation</th><th>Account used</th><th>Yours</th><th>Free to account</th></tr></thead><tbody>${rows.map(a=>{
    const matching=(s?.jobs||[]).filter(j=>['RUNNING','COMPLETING','SUSPENDED'].includes(j.state)&&j.account===a.partition+'-'+a.account);
@@ -110,7 +116,7 @@ function render(){
    const resource=(key,label,own)=>`<tr><td>${label}</td><td>${esc(a.total[key])}</td><td>${esc(a.used[key])}</td><td>${own}</td><td class="free-value ${key==='gpus'&&!a.free[key]?'exhausted':''}">${esc(a.free[key])}</td></tr>`;
    return `<tr><td rowspan="${a.total.gpus?3:2}" class="allocation-partition"><strong>${esc(a.partition)}</strong><span class="secondary">${esc(a.partition+'-'+a.account)}</span>${a.total.gpus?`<progress class="bar" max="${a.total.gpus}" value="${Math.max(0,a.free.gpus)}" aria-label="${esc(account+' '+a.partition)} GPUs free"></progress><span class="allocation-state ${a.free.gpus?'':'exhausted'}">${a.free.gpus?a.free.gpus+' GPUs free':'GPU allocation full'}</span>`:''}</td><td>${a.total.gpus?'GPUs':'CPUs'}</td><td>${a.total.gpus?a.total.gpus:a.total.cpus}</td><td>${a.total.gpus?a.used.gpus:a.used.cpus}</td><td>${mine(a.total.gpus?'gpus':'cpus')}</td><td class="free-value ${a.total.gpus&&!a.free.gpus?'exhausted':''}">${a.total.gpus?a.free.gpus:a.free.cpus}</td></tr>${a.total.gpus?resource('cpus','CPUs',mine('cpus')):''}${resource('memory','Memory','—')}`;
   }).join('')}</tbody></table></div></section>`;
- }).join('') || `<div class="empty">${esc(s?.allocation_error|| (s?'No matching account allocations.':'Connect to load your account allocations.'))}</div>`;
+ }).join('') || `<div class="empty">${s?.allocations_supported===false?'This cluster does not provide account allocation reports. Your account’s current GPU usage is shown in Weirdlab GPU activity below.':(s?.allocation_error?'Account availability is temporarily unavailable.':(s?'No matching account allocations.':'Connect to load your account allocations.'))}</div>`);
  const checkpointModels={};
  for(const n of s?.nodes||[]){
   if(!n.gpus || !supportedGpu(n.gres) || !n.partitions.some(p=>p.startsWith('ckpt')))continue;

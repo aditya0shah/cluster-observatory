@@ -116,11 +116,13 @@ Snapshots refresh every 2 minutes; browsers read the cache every 5 seconds. Clos
 
 GPU/CPU metrics represent allocations, not hardware utilization. Distinct nodes exclude pending jobs and count a shared node once. Completing and suspended jobs are included as active allocations.
 
-Weirdlab activity uses one account-filtered `squeue --json` request per snapshot and shows active GPU allocations charged to Weirdlab accounts. Counts come from allocated TRES, including multi-node totals and jobs requesting GPUs per job. GPU types come from allocation records, GRES detail or a known single node; unresolved types remain explicit. Older GPU classes and CPU-only jobs are omitted from the panel. Checkpoint jobs appear separately. This identifies account jobs, not physical ownership of a particular GPU. Expanded user rows stay open as cached data refreshes.
+Weirdlab activity uses one account-filtered compact `squeue` request per snapshot and shows active GPU allocations charged to Weirdlab accounts. Counts come from allocated TRES, including multi-node totals and jobs requesting GPUs per job. GPU types come from allocation records, GRES detail or a known single node; unresolved types remain explicit. Older GPU classes and CPU-only jobs are omitted from the panel. Checkpoint jobs appear separately. This identifies account jobs, not physical ownership of a particular GPU. Expanded user rows stay open as cached data refreshes.
 
 `hyakalloc` account totals are shared across account members. Your CPU/GPU usage is matched to exact partition-account associations. Your memory allocation is not inferred. Free account capacity does not guarantee a job will start: memory, job size, QoS and scheduler policies also matter. If account figures are unavailable, no cluster-wide substitute is shown.
 
 `hyakstorage` personal figures are separate from shared totals; unsupported or missing personal quotas stay unknown. Personal percentages use a personal quota where reported, otherwise the shared account quota with an explicit label. Derived percentages are approximate because source values are rounded. Unit suffixes use a 1024 step. `df` is filesystem-wide capacity and never treated as personal usage. `quota -s` is the raw fallback if `hyakstorage` is unavailable.
+
+Account availability and GPU activity each retain their last successful values and timestamps when a refresh fails. The UI labels those panels as delayed and never presents stale values as fresh. Clusters without `hyakalloc` show an unsupported-report notice while GPU activity continues to work.
 
 The collector issues bounded read-only Slurm commands over the host's existing connections. Storage checks are on demand. Snapshot data, credentials, host-specific addresses and logs are not committed.
 

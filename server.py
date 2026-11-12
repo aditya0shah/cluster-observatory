@@ -10,6 +10,8 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
+from snapshot_cache import merge_snapshot
+
 BASE = Path(__file__).resolve().parent
 BACKEND = os.environ.get('DASHBOARD_BACKEND', 'ssh')
 if BACKEND not in ('ssh', 'labpc'):
@@ -85,6 +87,7 @@ def poll(cluster):
         try:
             result = collect(cluster)
             with LOCK:
+                result = merge_snapshot(DATA[cluster].get('snapshot'), result)
                 DATA[cluster].update(snapshot=result, connected=True, error=None, checked_at=now())
                 persist()
         except Exception as e:

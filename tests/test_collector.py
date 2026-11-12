@@ -4,6 +4,16 @@ import collect
 
 
 class CollectorTests(unittest.TestCase):
+    def test_timeout_cleans_up_child_processes_holding_output_pipes(self):
+        import sys
+        import time
+        started = time.monotonic()
+        with self.assertRaisesRegex(RuntimeError, 'timed out'):
+            collect.run([sys.executable, '-c',
+                         'import subprocess,sys,time; subprocess.Popen([sys.executable,"-c","import time;time.sleep(10)"]);time.sleep(10)'], timeout=0.2)
+        self.assertLess(time.monotonic() - started, 2)
+
+
     def test_account_allocation_rows_remain_separate(self):
         output = '''│ lab │ gpu-a40 │ 52 │ 1000G │ 8 │ TOTAL │
 │ │ │ 20 │ 200G │ 3 │ USED │
@@ -42,6 +52,18 @@ class CollectorTests(unittest.TestCase):
         self.assertEqual(rows[1]['gpu_types'], {'L40S': 2})
         self.assertEqual(rows[2]['gpu_types'], {'H200': 1})
         self.assertEqual(rows[3]['gpu_types'], {'UNKNOWN': 4})
+
+    def test_compact_queue_keeps_allocations_and_job_names(self):
+        output = chr(31).join(['1', 'alice', 'job|with,delimiters', 'RUNNING',
+                              'gpu-a40-weirdlab', 'gpu-a40', 'g[1-2]',
+                              'gres/gpu=6,gres/gpu:a40=6', '']) + '\n'
+        rows = collect.parse_weirdlab_queue(output)
+        jobs = collect.parse_weirdlab_jobs(rows, ['gpu-a40-weirdlab'], [])
+        self.assertEqual(jobs[0]['name'], 'job|with,delimiters')
+        self.assertEqual(jobs[0]['gpu_types'], {'A40': 6})
+        with self.assertRaises(ValueError):
+            collect.parse_weirdlab_queue('incomplete response')
+
 
     def test_activity_failure_does_not_fail_snapshot(self):
         with patch.object(collect, 'run', side_effect=RuntimeError('access unavailable')):

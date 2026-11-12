@@ -6,13 +6,27 @@ import re
 import subprocess
 import sys
 import socket
+import os
+import signal
+import shutil
 
 
 def run(args, timeout=18):
-    p = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, timeout=timeout)
+    # Utilities such as hyakalloc spawn Slurm clients; bound the entire owned tree.
+    p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                         universal_newlines=True, start_new_session=True)
+    try:
+        out, err = p.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(p.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        p.communicate()
+        raise RuntimeError('%s timed out after %s seconds' % (' '.join(args[:2]), timeout))
     if p.returncode:
-        raise RuntimeError(p.stderr.strip() or 'Command failed: ' + args[0])
-    return p.stdout
+        raise RuntimeError(err.strip() or 'Command failed: ' + args[0])
+    return out
 
 
 def fields(line):
@@ -91,16 +105,35 @@ def parse_weirdlab_jobs(records, account_names, nodes):
     return jobs
 
 
-def weirdlab_activity(accounts, nodes):
+def parse_weirdlab_queue(output):
+    keys = ['job_id', 'user_name', 'name', 'job_state', 'account', 'partition', 'nodes', 'tres_alloc_str']
+    records = []
+    for line in output.splitlines():
+        if not line.strip():
+            continue
+        cells = line.split(chr(31))
+        if cells[-1] == '':
+            cells.pop()
+        if len(cells) != len(keys):
+            raise ValueError('Unexpected GPU activity response format')
+        records.append(dict(zip(keys, (cell.strip() for cell in cells))))
+    return records
+
+
+def weirdlab_activity(accounts, nodes, account_error=None):
+    if account_error:
+        return dict(jobs=[], error='Account associations could not be refreshed: ' + account_error)
     names = sorted(set(a[0] for a in accounts if a[0] == 'weirdlab' or a[0].endswith('-weirdlab')))
     if not names:
         return dict(jobs=[], error=None)
     try:
-        result = json.loads(run(['squeue', '--accounts=' + ','.join(names),
-                                 '--states=RUNNING,COMPLETING,SUSPENDED', '--json'], 25))
-        if result.get('errors'):
-            raise RuntimeError('Slurm could not return Weirdlab GPU activity.')
-        return dict(jobs=parse_weirdlab_jobs(result.get('jobs', []), names, nodes), error=None)
+        # Exact association names need no group-name expansion from the site's wrapper.
+        executable = '/usr/bin/squeue' if os.path.isfile('/usr/bin/squeue') else 'squeue'
+        columns = ['JobID', 'UserName', 'Name', 'State', 'Account', 'Partition', 'NodeList', 'tres-alloc']
+        output_format = ','.join(column + ':0' + chr(31) for column in columns)
+        output = run([executable, '--accounts=' + ','.join(names),
+                      '--states=RUNNING,COMPLETING,SUSPENDED', '--noheader', '--Format=' + output_format], 25)
+        return dict(jobs=parse_weirdlab_jobs(parse_weirdlab_queue(output), names, nodes), error=None)
     except Exception as e:
         return dict(jobs=[], error=str(e))
 
@@ -131,41 +164,36 @@ def snapshot():
                           gpus=total_gpu, allocated_gpus=used_gpu, schedulable=usable,
                           gres=n.get('Gres',''), memory_mb=int(n.get('RealMemory',0))))
     warnings = []
+    account_error = None
     try:
         accounts = [x.split('|')[:3] for x in run(['sacctmgr','-n','-P','show','assoc','where','user='+user,'format=Account,Partition,QOS']).splitlines() if x.strip()]
     except Exception as e:
         accounts = []
+        account_error = str(e)
         warnings.append(str(e))
     allocations = []
     allocation_error = None
     checkpoint = None
+    allocations_supported = shutil.which('hyakalloc') is not None
     try:
-        allocations = parse_allocations(run(['hyakalloc', '-u', user], 25))
-        if not allocations:
+        allocations = parse_allocations(run(['hyakalloc', '-u', user], 25)) if allocations_supported else []
+        if allocations_supported and not allocations:
             allocation_error = 'No account allocation rows returned by hyakalloc.'
     except Exception as e:
         allocation_error = str(e)
-    try:
-        checkpoint_output = run(['hyakalloc', '-c'], 25)
-        for line in checkpoint_output.splitlines():
-            cells = [cell.strip() for cell in line.split('│')[1:-1]]
-            if len(cells) == 3 and cells[0] == 'Idle:':
-                checkpoint = dict(cpus=int(cells[1]), gpus=int(cells[2]))
-    except Exception:
-        pass
     try:
         recent = [dict(zip(['id','name','state','elapsed','exit_code'], x.split('|')[:5])) for x in run(['sacct','-X','-n','-P','-u',user,'-S','now-1days','-o','JobID,JobName%100,State,Elapsed,ExitCode']).splitlines() if x.strip()][-30:]
     except Exception as e:
         recent = []
         warnings.append(str(e))
-    lab_activity = weirdlab_activity(accounts, nodes)
+    lab_activity = weirdlab_activity(accounts, nodes, account_error)
     running = [j for j in jobs if j['state'] in ['RUNNING','COMPLETING','SUSPENDED']]
     expanded = set()
     for nodelist in set(j['nodelist'] for j in running):
         if nodelist and nodelist != '(null)':
             expanded.update(run(['scontrol','show','hostnames',nodelist]).splitlines())
     return dict(user=user, host=socket.gethostname(), collected_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                jobs=jobs, nodes=nodes, accounts=accounts, weirdlab_gpu_activity=lab_activity, allocations=allocations, allocation_error=allocation_error, checkpoint=checkpoint, recent=recent, warnings=warnings,
+                jobs=jobs, nodes=nodes, accounts=accounts, weirdlab_gpu_activity=lab_activity, allocations=allocations, allocations_supported=allocations_supported, allocation_error=allocation_error, checkpoint=checkpoint, recent=recent, warnings=warnings,
                 usage=dict(nodes=len(expanded), cpus=sum(j['cpus'] for j in running), gpus=sum(j['gpus'] for j in running),
                            running=len(running), pending=sum(j['state']=='PENDING' for j in jobs)))
 
