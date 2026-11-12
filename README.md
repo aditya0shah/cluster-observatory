@@ -122,6 +122,8 @@ Weirdlab activity uses one account-filtered compact `squeue` request per snapsho
 
 `hyakstorage` personal figures are separate from shared totals; unsupported or missing personal quotas stay unknown. Personal percentages use a personal quota where reported, otherwise the shared account quota with an explicit label. Derived percentages are approximate because source values are rounded. Unit suffixes use a 1024 step. `df` is filesystem-wide capacity and never treated as personal usage. `quota -s` is the raw fallback if `hyakstorage` is unavailable.
 
+If disk-cache writes fail (for example, the host disk fills), polling continues in memory and the dashboard shows a cache warning. Cache writes recover automatically once storage is available; a failed write preserves the last saved snapshot.
+
 Account availability and GPU activity each retain their last successful values and timestamps when a refresh fails. The UI labels those panels as delayed and never presents stale values as fresh. Clusters without `hyakalloc` show an unsupported-report notice while GPU activity continues to work.
 
 The collector issues bounded read-only Slurm commands over the host's existing connections. Storage checks are on demand. Snapshot data, credentials, host-specific addresses and logs are not committed.

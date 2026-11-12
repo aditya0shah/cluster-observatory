@@ -1,5 +1,10 @@
 import unittest
-from snapshot_cache import merge_snapshot
+from snapshot_cache import merge_snapshot, save_snapshot
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
+import errno
+import json
 
 
 class SnapshotCacheTests(unittest.TestCase):
@@ -35,3 +40,18 @@ class SnapshotCacheTests(unittest.TestCase):
         result = merge_snapshot(None, failed)
         self.assertNotIn('allocations_collected_at', result)
         self.assertNotIn('collected_at', result['weirdlab_gpu_activity'])
+
+
+class DiskCacheTests(unittest.TestCase):
+    def test_disk_full_is_nonfatal_preserves_cache_and_recovers(self):
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / 'snapshots.json'
+            path.write_text('{"old": true}')
+            with patch.object(Path, 'write_text', side_effect=OSError(errno.ENOSPC, 'No space left on device')):
+                error = save_snapshot(path, {'new': True})
+            self.assertIn('No space left on device', error)
+            self.assertEqual(json.loads(path.read_text()), {'old': True})
+            self.assertFalse(path.with_suffix('.tmp').exists())
+            self.assertIsNone(save_snapshot(path, {'new': True}))
+            self.assertEqual(json.loads(path.read_text()), {'new': True})
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)

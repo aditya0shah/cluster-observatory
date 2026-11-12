@@ -6,11 +6,12 @@ import os
 from pathlib import Path
 import subprocess
 import socket
+import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
-from snapshot_cache import merge_snapshot
+from snapshot_cache import merge_snapshot, save_snapshot
 
 BASE = Path(__file__).resolve().parent
 BACKEND = os.environ.get('DASHBOARD_BACKEND', 'ssh')
@@ -30,8 +31,8 @@ LOGIN_COMMANDS = {c: ('~/bin/cluster login ' + host) if BACKEND == 'labpc'
                   else 'ssh -MNf -o ControlMaster=yes -o ControlPersist=yes ' + host
                   for c, host in HOSTS.items()}
 STATE = Path(os.environ.get('DASHBOARD_STATE', str(Path.home() / '.local/state/cluster-observatory')))
-STATE.mkdir(parents=True, exist_ok=True, mode=0o700)
 CACHE = STATE / 'snapshots.json'
+CACHE_ERROR = None
 LOCK = threading.RLock()
 try:
     DATA = json.loads(CACHE.read_text())
@@ -51,10 +52,13 @@ def now():
 
 
 def persist():
-    tmp = CACHE.with_suffix('.tmp')
-    tmp.write_text(json.dumps(DATA))
-    tmp.chmod(0o600)
-    tmp.replace(CACHE)
+    global CACHE_ERROR
+    error = save_snapshot(CACHE, DATA)
+    if error != CACHE_ERROR:
+        message = ('Snapshot cache unavailable; live updates continue in memory: ' + error
+                   if error else 'Snapshot cache writes recovered.')
+        print(message, file=sys.stderr, flush=True)
+    CACHE_ERROR = error
 
 
 def collect(cluster, storage=False):
@@ -151,7 +155,7 @@ class Handler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path == '/api/status':
             with LOCK:
-                return self.reply(200, dict(clusters=DATA, server_time=now(), refresh_seconds=REFRESH_SECONDS, route=ROUTE, backend=BACKEND, login_commands=LOGIN_COMMANDS))
+                return self.reply(200, dict(clusters=DATA, server_time=now(), refresh_seconds=REFRESH_SECONDS, cache_error=CACHE_ERROR, route=ROUTE, backend=BACKEND, login_commands=LOGIN_COMMANDS))
         files = {'/':('index.html','text/html; charset=utf-8'), '/app.js':('app.js','text/javascript'), '/style.css':('style.css','text/css'), '/terminal.css':('terminal.css','text/css')}
         if path in files:
             name, mime = files[path]

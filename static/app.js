@@ -89,6 +89,8 @@ function weirdlabMarkup(activity,currentUser,openUsers=new Set()){
 function render(){
  if(!data)return;
  document.querySelector('.aside-bottom small').textContent=data.route+' · read only';
+ $('cache-status').hidden=!data.cache_error;
+ $('cache-status').textContent=data.cache_error?'Snapshot cache unavailable. Live readings continue to update in memory; saved readings may be lost after a restart.':'';
  const refreshSeconds=data.refresh_seconds||120;
  const refreshLabel=refreshSeconds%60===0?`${refreshSeconds/60} min`:`${refreshSeconds}s`;
  const c=data.clusters[cluster], s=c.snapshot, stale=!c.connected || !s || Date.now()-Date.parse(s.collected_at)>refreshSeconds*3000;

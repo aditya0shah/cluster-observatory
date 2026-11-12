@@ -1,4 +1,5 @@
-"""Keep optional cluster panels independent when a scheduler query fails."""
+"""Preserve useful snapshots and keep cache failures nonfatal."""
+import json
 
 
 def merge_snapshot(previous, current):
@@ -28,3 +29,20 @@ def merge_snapshot(previous, current):
         activity['collected_at'] = timestamp
     merged['weirdlab_gpu_activity'] = activity
     return merged
+
+
+def save_snapshot(path, data):
+    """Return a cache error without interrupting live in-memory updates."""
+    temporary = path.with_suffix('.tmp')
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        temporary.write_text(json.dumps(data))
+        temporary.chmod(0o600)
+        temporary.replace(path)
+    except OSError as error:
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return str(error)
+    return None
