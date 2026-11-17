@@ -46,3 +46,12 @@ def save_snapshot(path, data):
             pass
         return str(error)
     return None
+
+
+def merge_storage(previous, current):
+    merged = dict(current)
+    leaderboard = dict(current.get('leaderboard') or {})
+    old_board = (previous or {}).get('leaderboard') or {}
+    if leaderboard.get('error') and old_board.get('collected_at'):
+        merged['leaderboard'] = dict(old_board, error=leaderboard['error'])
+    return merged

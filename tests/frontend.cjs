@@ -3,7 +3,7 @@ const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const elements = {};
 const context = {
-  document: {getElementById: id => elements[id] ||= {}, querySelectorAll: () => []},
+  document: {getElementById: id => elements[id] ||= {}, querySelectorAll: () => [], addEventListener() {}},
   localStorage: {getItem: () => null}, fetch: () => new Promise(() => {}), setInterval() {}, Date
 };
 vm.createContext(context);
@@ -46,4 +46,22 @@ const stale=evaluate("weirdlabMarkup(activity,'alice')");
 assert(stale.includes('GPU activity refresh delayed'));
 assert(stale.includes('Showing the last successful reading'));
 assert(stale.includes('train &lt;phase&gt;'));
+context.board={path:'/scratch/weirdlab',used:'100GB',quota:'200GB',used_bytes:100,quota_bytes:200,collected_at:new Date().toISOString(),members:Array.from({length:9},(_,i)=>({user:i===8?'me':'member'+i,used:(10-i)+'GB',used_bytes:10-i,files:100-i,percent_of_lab_used:10-i}))};
+const boardMarkup=evaluate("leaderboardMarkup(board,'me')");
+assert(boardMarkup.includes('Share of lab usage'));
+assert(boardMarkup.includes('50%'));
+assert(boardMarkup.includes('storage-is-you'));
+assert(boardMarkup.includes('#9'));
+assert(boardMarkup.includes('Show all 9 owners'));
+assert.equal((boardMarkup.match(/storage-rank /g)||[]).length,6);
+evaluate('expanded.storage=true');
+assert.equal((evaluate("leaderboardMarkup(board,'me')").match(/storage-rank /g)||[]).length,9);
+assert(evaluate("leaderboardMarkup(board,'me')").includes('Show less'));
+evaluate('expanded.storage=false');
+context.snapshot={jobs:[],allocations:[{account:'lab',partition:'gpu-a40',total:{gpus:8,cpus:52,memory:'1T'},free:{gpus:2,cpus:20,memory:'500G'},used:{gpus:6,cpus:32,memory:'500G'}}]};
+const cards=evaluate('allocationMarkup(snapshot,new Set())');
+assert(cards.includes('allocation-card'));
+assert(cards.includes('aria-label="lab gpu-a40 GPUs free"'));
+assert(cards.includes('CPU & memory details'));
+assert(!cards.includes('data-disclosure="klone:allocation:lab" open'));
 console.log('Frontend checks passed.');

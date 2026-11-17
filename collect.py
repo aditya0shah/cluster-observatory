@@ -9,6 +9,8 @@ import socket
 import os
 import signal
 import shutil
+import csv
+import io
 
 
 def run(args, timeout=18):
@@ -198,6 +200,95 @@ def snapshot():
                            running=len(running), pending=sum(j['state']=='PENDING' for j in jobs)))
 
 
+def storage_bytes(value):
+    match = re.fullmatch(r'\s*(\d+(?:\.\d+)?)\s*([KMGTPE]?)(?:i?B)?\s*', value, re.I)
+    if not match:
+        return None
+    power = 'KMGTPE'.find(match.group(2).upper()) + 1 if match.group(2) else 0
+    return int(float(match.group(1)) * 1024 ** power)
+
+
+def parse_storage_leaderboard(output):
+    """Read cached per-file-owner accounting from hyakstorage, never walk directories."""
+    board = dict(lab='weirdlab', path=None, used=None, quota=None,
+                 used_bytes=None, quota_bytes=None, members=[], error=None)
+    in_users = False
+    for line in output.splitlines():
+        heading = re.search(r'Usage report for (\/\S+)', line)
+        if heading:
+            board['path'] = heading.group(1)
+        if 'Usage by user:' in line:
+            in_users = True
+            continue
+        if '│' not in line:
+            continue
+        cells = [cell.strip() for cell in line.split('│')[1:-1]]
+        if len(cells) == 3 and cells[0] == 'Total:':
+            disk = re.split(r'\s*/\s*', cells[1])
+            if len(disk) == 2:
+                board.update(used=disk[0], quota=disk[1],
+                             used_bytes=storage_bytes(disk[0]), quota_bytes=storage_bytes(disk[1]))
+        elif in_users and len(cells) == 3:
+            disk = re.match(r'([\d.]+\s*[KMGTPE]?(?:i?B)?)', cells[1], re.I)
+            files = re.match(r'(\d+)', cells[2])
+            if not disk:
+                continue
+            used = disk.group(1).strip()
+            amount = storage_bytes(used)
+            if amount is None:
+                continue
+            board['members'].append(dict(user=cells[0], used=used, used_bytes=amount,
+                                         files=int(files.group(1)) if files else None))
+    if not in_users or board['used_bytes'] is None:
+        raise ValueError('The cluster did not return a per-member storage report.')
+    return finish_storage_leaderboard(board)
+
+
+def finish_storage_leaderboard(board):
+    board['members'].sort(key=lambda member: (-member['used_bytes'], member['user']))
+    for member in board['members']:
+        member['percent_of_lab_used'] = (100.0 * member['used_bytes'] / board['used_bytes']
+                                         if board['used_bytes'] else 0.0)
+    board['collected_at'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    return board
+
+
+def storage_amount(amount):
+    for power, suffix in ((4, 'TiB'), (3, 'GiB'), (2, 'MiB'), (1, 'KiB')):
+        if amount >= 1024 ** power:
+            return ('%.1f' % (amount / 1024 ** power)).rstrip('0').rstrip('.') + suffix
+    return str(amount) + 'B'
+
+
+def parse_storage_leaderboard_csv(output):
+    rows = list(csv.DictReader(io.StringIO(output)))
+    total = next((r for r in rows if r.get('type') == 'fileset' and r.get('path') == '/gpfs/projects/weirdlab'), None)
+    if total is None:
+        raise ValueError('The cluster did not return the Weirdlab fileset quota.')
+    used, quota = int(total['kib_used']) * 1024, int(total['kib_max']) * 1024
+    board = dict(lab='weirdlab', path=total['path'], used=storage_amount(used),
+                 quota=storage_amount(quota) if quota else None,
+                 used_bytes=used, quota_bytes=quota or None, members=[], error=None)
+    for row in rows:
+        if row.get('type') != 'user' or row.get('path') != total['path']:
+            continue
+        amount = int(row['kib_used']) * 1024
+        board['members'].append(dict(user=row['id'], used=storage_amount(amount),
+                                     used_bytes=amount, files=int(row['files'])))
+    return finish_storage_leaderboard(board)
+
+
+def storage_leaderboard():
+    try:
+        if os.path.isdir('/gpfs/projects/weirdlab'):
+            output = run(['hyakstorage', '-c', '-u', '-d', '/gpfs/projects/weirdlab'], 35)
+            return parse_storage_leaderboard_csv(output)
+        # Explicit group and user view avoids reading other labs' individual usage.
+        return parse_storage_leaderboard(run(['hyakstorage', '-u', '-d', 'weirdlab'], 35))
+    except Exception as error:
+        return dict(lab='weirdlab', members=[], error=str(error))
+
+
 def storage():
     reports = []
     for command in [['hyakstorage'], ['quota','-s']]:
@@ -211,7 +302,8 @@ def storage():
         reports.append({'command':'df -h (filesystem-wide capacity)', 'output':run(['df','-h',__import__('os').path.expanduser('~')])})
     except Exception as e:
         reports.append({'error':str(e)})
-    return dict(collected_at=datetime.datetime.now(datetime.timezone.utc).isoformat(), reports=reports)
+    return dict(collected_at=datetime.datetime.now(datetime.timezone.utc).isoformat(), reports=reports,
+                user=getpass.getuser(), leaderboard=storage_leaderboard())
 
 if __name__ == '__main__':
     try:

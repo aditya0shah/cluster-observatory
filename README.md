@@ -11,7 +11,8 @@ Python standard library only. No frontend build, database, cloud service, or API
 - Account-specific allocation tables from `hyakalloc`: total allocation, account usage, your usage, and remaining resources.
 - A40, L40/L40S, A100, H100/H200 and newer GPU classes; shared checkpoint capacity appears separately.
 - Weirdlab GPU activity grouped by user, with account/checkpoint counts per GPU type and expandable job/node details.
-- On-demand storage checks with personal usage, quota percentages, account totals, and expandable raw reports.
+- On-demand Weirdlab storage leaderboard: per-owner amounts, share of lab-used storage, your rank and highlighted row, plus expandable personal quotas and raw reports.
+- Compact account GPU cards, active-first job previews, six-person summaries, and in-place expansion for long lists. All account GPU availability stays visible; your row stays in previews.
 - Read-only queries. No job submission, cancellation, credential collection, or recursive filesystem scans.
 
 ## Quick start
@@ -116,9 +117,11 @@ Snapshots refresh every 2 minutes; browsers read the cache every 5 seconds. Clos
 
 GPU/CPU metrics represent allocations, not hardware utilization. Distinct nodes exclude pending jobs and count a shared node once. Completing and suspended jobs are included as active allocations.
 
-Weirdlab activity uses one account-filtered compact `squeue` request per snapshot and shows active GPU allocations charged to Weirdlab accounts. Counts come from allocated TRES, including multi-node totals and jobs requesting GPUs per job. GPU types come from allocation records, GRES detail or a known single node; unresolved types remain explicit. Older GPU classes and CPU-only jobs are omitted from the panel. Checkpoint jobs appear separately. This identifies account jobs, not physical ownership of a particular GPU. Expanded user rows stay open as cached data refreshes.
+Weirdlab activity uses one account-filtered compact `squeue` request per snapshot and shows active GPU allocations charged to Weirdlab accounts. Counts come from allocated TRES, including multi-node totals and jobs requesting GPUs per job. GPU types come from allocation records, GRES detail or a known single node; unresolved types remain explicit. Older GPU classes and CPU-only jobs are omitted from the panel. Checkpoint jobs appear separately. This identifies account jobs, not physical ownership of a particular GPU. Expanded user rows and CPU/memory details stay open as cached data refreshes. Jobs, people and storage show compact previews with Show all controls; your GPU and storage rows remain visible even outside the top six. Account metadata and history start collapsed, with their counts and failure totals visible.
 
 `hyakalloc` account totals are shared across account members. Your CPU/GPU usage is matched to exact partition-account associations. Your memory allocation is not inferred. Free account capacity does not guarantee a job will start: memory, job size, QoS and scheduler policies also matter. If account figures are unavailable, no cluster-wide substitute is shown.
+
+`hyakstorage` per-member reports use the explicit Weirdlab user view on Klone and the Weirdlab fileset CSV view on Tillicum. Leaderboard percentages divide each owner’s usage by the lab’s total **used** storage; quota fill is labeled separately. Reports are read on demand, without directory scans. A failed leaderboard refresh keeps the previous ranking with its original timestamp and a delay notice. Numeric UIDs remain visible as unresolved owners.
 
 `hyakstorage` personal figures are separate from shared totals; unsupported or missing personal quotas stay unknown. Personal percentages use a personal quota where reported, otherwise the shared account quota with an explicit label. Derived percentages are approximate because source values are rounded. Unit suffixes use a 1024 step. `df` is filesystem-wide capacity and never treated as personal usage. `quota -s` is the raw fallback if `hyakstorage` is unavailable.
 

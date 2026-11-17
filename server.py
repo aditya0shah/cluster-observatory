@@ -11,7 +11,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
-from snapshot_cache import merge_snapshot, save_snapshot
+from snapshot_cache import merge_snapshot, merge_storage, save_snapshot
 
 BASE = Path(__file__).resolve().parent
 BACKEND = os.environ.get('DASHBOARD_BACKEND', 'ssh')
@@ -110,6 +110,7 @@ def storage_poll(cluster):
         try:
             result = collect(cluster, True)
             with LOCK:
+                result = merge_storage(DATA[cluster].get('storage'), result)
                 DATA[cluster].update(storage=result, storage_error=None)
         except Exception as e:
             with LOCK:
