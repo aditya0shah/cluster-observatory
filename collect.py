@@ -211,7 +211,7 @@ def storage_bytes(value):
 def parse_storage_leaderboard(output):
     """Read cached per-file-owner accounting from hyakstorage, never walk directories."""
     board = dict(lab='weirdlab', path=None, used=None, quota=None,
-                 used_bytes=None, quota_bytes=None, members=[], error=None)
+                 used_bytes=None, quota_bytes=None, used_files=None, quota_files=None, members=[], error=None)
     in_users = False
     for line in output.splitlines():
         heading = re.search(r'Usage report for (\/\S+)', line)
@@ -228,6 +228,10 @@ def parse_storage_leaderboard(output):
             if len(disk) == 2:
                 board.update(used=disk[0], quota=disk[1],
                              used_bytes=storage_bytes(disk[0]), quota_bytes=storage_bytes(disk[1]))
+            counts = re.match(r'([\d,]+)\s*/\s*([\d,]+)', cells[2])
+            if counts:
+                board.update(used_files=int(counts.group(1).replace(',', '')),
+                             quota_files=int(counts.group(2).replace(',', '')))
         elif in_users and len(cells) == 3:
             disk = re.match(r'([\d.]+\s*[KMGTPE]?(?:i?B)?)', cells[1], re.I)
             files = re.match(r'(\d+)', cells[2])
@@ -268,7 +272,8 @@ def parse_storage_leaderboard_csv(output):
     used, quota = int(total['kib_used']) * 1024, int(total['kib_max']) * 1024
     board = dict(lab='weirdlab', path=total['path'], used=storage_amount(used),
                  quota=storage_amount(quota) if quota else None,
-                 used_bytes=used, quota_bytes=quota or None, members=[], error=None)
+                 used_bytes=used, quota_bytes=quota or None, used_files=int(total['files']),
+                 quota_files=None, members=[], error=None)
     for row in rows:
         if row.get('type') != 'user' or row.get('path') != total['path']:
             continue

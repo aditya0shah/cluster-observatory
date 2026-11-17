@@ -11,7 +11,7 @@ Python standard library only. No frontend build, database, cloud service, or API
 - Account-specific allocation tables from `hyakalloc`: total allocation, account usage, your usage, and remaining resources.
 - A40, L40/L40S, A100, H100/H200 and newer GPU classes; shared checkpoint capacity appears separately.
 - Weirdlab GPU activity grouped by user, with account/checkpoint counts per GPU type and expandable job/node details.
-- On-demand Weirdlab storage leaderboard: per-owner amounts, share of lab-used storage, your rank and highlighted row, plus expandable personal quotas and raw reports.
+- On-demand Weirdlab leaderboard with Storage and Files tabs: rank by bytes or file count, view each owner’s share of lab usage, and see your highlighted rank in either view.
 - Compact account GPU cards, active-first job previews, six-person summaries, and in-place expansion for long lists. All account GPU availability stays visible; your row stays in previews.
 - Read-only queries. No job submission, cancellation, credential collection, or recursive filesystem scans.
 
@@ -121,7 +121,7 @@ Weirdlab activity uses one account-filtered compact `squeue` request per snapsho
 
 `hyakalloc` account totals are shared across account members. Your CPU/GPU usage is matched to exact partition-account associations. Your memory allocation is not inferred. Free account capacity does not guarantee a job will start: memory, job size, QoS and scheduler policies also matter. If account figures are unavailable, no cluster-wide substitute is shown.
 
-`hyakstorage` per-member reports use the explicit Weirdlab user view on Klone and the Weirdlab fileset CSV view on Tillicum. Leaderboard percentages divide each owner’s usage by the lab’s total **used** storage; quota fill is labeled separately. Reports are read on demand, without directory scans. A failed leaderboard refresh keeps the previous ranking with its original timestamp and a delay notice. Numeric UIDs remain visible as unresolved owners.
+`hyakstorage` per-member reports use the explicit Weirdlab user view on Klone and the Weirdlab fileset CSV view on Tillicum. The Storage tab divides each owner’s byte usage by the lab’s total **used** storage. The Files tab ranks by file count and divides by the lab’s reported file total (or the sum of reported owners when reading an older cached snapshot). Quota fill is labeled separately; file quota is shown only when provided by the cluster. Both views reuse the same report and add no cluster queries. The selected tab survives refreshes and reloads. Reports are read on demand, without directory scans. A failed leaderboard refresh keeps the previous ranking with its original timestamp and a delay notice. Numeric UIDs remain visible as unresolved owners.
 
 `hyakstorage` personal figures are separate from shared totals; unsupported or missing personal quotas stay unknown. Personal percentages use a personal quota where reported, otherwise the shared account quota with an explicit label. Derived percentages are approximate because source values are rounded. Unit suffixes use a 1024 step. `df` is filesystem-wide capacity and never treated as personal usage. `quota -s` is the raw fallback if `hyakstorage` is unavailable.
 

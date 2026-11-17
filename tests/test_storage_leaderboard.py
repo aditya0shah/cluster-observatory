@@ -17,6 +17,8 @@ Usage by user:
         self.assertEqual(board['members'][0]['percent_of_lab_used'], 50)
         self.assertEqual(board['members'][1]['percent_of_lab_used'], 25)
         self.assertEqual(board['members'][0]['files'], 20)
+        self.assertEqual(board['used_files'], 100)
+        self.assertEqual(board['quota_files'], 200)
         self.assertEqual(storage_bytes('1TiB'), 1024**4)
         self.assertIsNone(storage_bytes('unknown'))
 
@@ -31,6 +33,8 @@ Usage by user:
         self.assertEqual([m['user'] for m in board['members']], ['alice', 'bob'])
         self.assertEqual(board['used_bytes'], 400*1024)
         self.assertEqual(board['quota_bytes'], 1000*1024)
+        self.assertEqual(board['used_files'], 30)
+        self.assertIsNone(board['quota_files'])
         self.assertEqual(board['members'][0]['percent_of_lab_used'], 75)
         with self.assertRaises(ValueError):
             parse_storage_leaderboard('no per-member data')

@@ -1,6 +1,8 @@
 let cluster = localStorage.getItem('observatory-cluster') || 'klone';
 if (!['klone','tillicum'].includes(cluster)) cluster='klone';
 let data = null;
+let storageMetric=localStorage.getItem('observatory-storage-metric')||'bytes';
+if(!['bytes','files'].includes(storageMetric))storageMetric='bytes';
 const expanded={jobs:false,people:false,storage:false};
 const $ = id => document.getElementById(id);
 const esc = x => String(x ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -60,16 +62,25 @@ function leaderboardMarkup(board,user){
  if(!board)return '<div class="empty">Refresh storage to load the lab-member leaderboard.</div>';
  const notice=componentNotice('Storage leaderboard',board.error,board.collected_at);
  if(board.error&&!board.collected_at)return notice;
- const members=[...(board.members||[])].sort((a,b)=>b.used_bytes-a.used_bytes||a.user.localeCompare(b.user));
+ const byFiles=storageMetric==='files';
+ const value=m=>byFiles?(m.files??-1):m.used_bytes;
+ const members=[...(board.members||[])].sort((a,b)=>value(b)-value(a)||a.user.localeCompare(b.user));
  if(!members.length)return notice+'<div class="empty">No per-member storage records were reported.</div>';
  const ranks=new Map(members.map((p,i)=>[p.user,i+1])), mine=members.find(p=>p.user===user);
  const visible=previewWithYou(members,user,6,expanded.storage);
- const quotaPercent=board.quota_bytes?100*board.used_bytes/board.quota_bytes:null;
- return notice+`<div class="storage-board-stats"><span><small>LAB USED / QUOTA</small><strong>${esc(sizeLabel(board.used))}<em> / ${esc(sizeLabel(board.quota))}</em></strong></span><span><small>QUOTA FILLED</small><strong>${quotaPercent===null?'—':percentLabel(quotaPercent)}</strong></span><span><small>YOUR POSITION</small><strong>${mine?'#'+ranks.get(user):'—'}<em>${mine?' · '+esc(sizeLabel(mine.used)):''}</em></strong></span><span><small>REPORTED OWNERS</small><strong>${members.length}</strong></span></div><div class="table-wrap storage-rank-scroll"><table class="storage-leaderboard"><thead><tr><th>Rank</th><th>Lab member</th><th>Storage used</th><th>Share of lab usage</th><th>Files</th></tr></thead><tbody>${visible.map(m=>{
-  const pct=m.percent_of_lab_used??(board.used_bytes?100*m.used_bytes/board.used_bytes:0);
-  return `<tr class="${m.user===user?'storage-is-you':''}"><td><span class="storage-rank ${ranks.get(m.user)<=3?'top-rank':''}">${String(ranks.get(m.user)).padStart(2,'0')}</span></td><td><strong>${esc(/^\d+$/.test(m.user)?'UID '+m.user:m.user)}</strong>${m.user===user?'<span class="lab-you">YOU</span>':''}</td><td class="storage-amount">${esc(sizeLabel(m.used))}</td><td><div class="storage-share"><progress class="bar" max="100" value="${Math.max(0,Math.min(100,pct))}" aria-label="${esc(m.user)} share of lab used storage"></progress><span>${percentLabel(pct)}</span></div></td><td class="storage-files">${m.files==null?'—':Number(m.files).toLocaleString()}</td></tr>`;
- }).join('')}</tbody></table></div>${members.length>6?`<div class="expand-footer"><button class="expand-button" data-expand="storage">${expanded.storage?'Show less':'Show all '+members.length+' owners'} <span>${expanded.storage?'−':'+'}</span></button></div>`:''}<p class="storage-note">Weirdlab · ${esc(board.path||'')} · percentages are each owner’s share of <strong>used</strong> lab storage. Rounded cluster accounting; numeric UIDs are unresolved owners.</p>`;
+ const fileTotal=board.used_files??members.reduce((sum,m)=>sum+(m.files??0),0);
+ const used=byFiles?fileTotal:board.used_bytes,quota=byFiles?board.quota_files:board.quota_bytes;
+ const quotaPercent=quota?100*used/quota:null;
+ const countLabel=n=>n==null?'—':Number(n).toLocaleString();
+ const amount=m=>byFiles?countLabel(m.files):sizeLabel(m.used);
+ const shareLabel=byFiles?(board.used_files==null?'reported member files':'lab files'):'lab usage';
+ const tabs=`<div class="storage-metric-tabs" role="tablist" aria-label="Storage leaderboard ranking">${[['bytes','Storage'],['files','Files']].map(([key,label])=>`<button role="tab" id="storage-tab-${key}" data-storage-metric="${key}" aria-controls="storage-leaderboard-panel" aria-selected="${storageMetric===key}" tabindex="${storageMetric===key?0:-1}">${label}</button>`).join('')}</div>`;
+ return notice+tabs+`<div id="storage-leaderboard-panel" role="tabpanel" aria-labelledby="storage-tab-${storageMetric}"><div class="storage-board-stats"><span><small>${byFiles?'LAB FILES':'LAB USED / QUOTA'}</small><strong>${esc(byFiles?countLabel(fileTotal):sizeLabel(board.used))}${byFiles?'':`<em> / ${esc(sizeLabel(board.quota))}</em>`}</strong></span><span><small>${byFiles?'FILE QUOTA FILLED':'QUOTA FILLED'}</small><strong>${quotaPercent===null?'—':percentLabel(quotaPercent)}${byFiles?`<em>${quota?' / '+countLabel(quota)+' files':'not reported'}</em>`:''}</strong></span><span><small>YOUR POSITION</small><strong>${mine?'#'+ranks.get(user):'—'}<em>${mine?' · '+esc(amount(mine))+(byFiles?' files':''):''}</em></strong></span><span><small>REPORTED OWNERS</small><strong>${members.length}</strong></span></div><div class="table-wrap storage-rank-scroll"><table class="storage-leaderboard"><thead><tr><th>Rank</th><th>Lab member</th><th>${byFiles?'Files used':'Storage used'}</th><th>Share of ${shareLabel}</th><th>${byFiles?'Storage used':'Files'}</th></tr></thead><tbody>${visible.map(m=>{
+  const pct=byFiles?(m.files==null?null:(fileTotal?100*m.files/fileTotal:0)):(m.percent_of_lab_used??(board.used_bytes?100*m.used_bytes/board.used_bytes:0));
+  return `<tr class="${m.user===user?'storage-is-you':''}"><td><span class="storage-rank ${ranks.get(m.user)<=3?'top-rank':''}">${String(ranks.get(m.user)).padStart(2,'0')}</span></td><td><strong>${esc(/^\d+$/.test(m.user)?'UID '+m.user:m.user)}</strong>${m.user===user?'<span class="lab-you">YOU</span>':''}</td><td class="storage-amount">${esc(amount(m))}</td><td><div class="storage-share"><progress class="bar" max="100" value="${Math.max(0,Math.min(100,pct??0))}" aria-label="${esc(m.user)} share of ${byFiles?'lab files':'lab used storage'}"></progress><span>${pct===null?'—':percentLabel(pct)}</span></div></td><td class="storage-files">${esc(byFiles?sizeLabel(m.used):countLabel(m.files))}</td></tr>`;
+ }).join('')}</tbody></table></div>${members.length>6?`<div class="expand-footer"><button class="expand-button" data-expand="storage">${expanded.storage?'Show less':'Show all '+members.length+' owners'} <span>${expanded.storage?'−':'+'}</span></button></div>`:''}<p class="storage-note">Weirdlab · ${esc(board.path||'')} · percentages are each owner’s share of ${byFiles?shareLabel:'<strong>used</strong> lab storage'}. ${byFiles?'Files are ranked by count.':'Rounded cluster accounting;'} numeric UIDs are unresolved owners.</p></div>`;
 }
+
 function allocationMarkup(s,openDetails){
  const groups={};
  for(const a of s?.allocations||[]){if(a.total.gpus&&supportedGpu(a.partition))(groups[a.account] ||= []).push(a);}
@@ -178,8 +189,24 @@ $('refresh').onclick=()=>action('refresh');$('storage').onclick=()=>action('stor
 load();setInterval(load,5000);
 
 document.addEventListener('click',event=>{
+ const metricTab=event.target.closest('[data-storage-metric]');
+ if(metricTab){selectStorageMetric(metricTab.dataset.storageMetric);return;}
  const button=event.target.closest('[data-expand]');
  if(!button)return;
  const key=button.dataset.expand;
  if(Object.hasOwn(expanded,key)){expanded[key]=!expanded[key];render();}
+});
+
+function selectStorageMetric(metric){
+ if(!['bytes','files'].includes(metric))return;
+ storageMetric=metric;
+ localStorage.setItem('observatory-storage-metric',metric);
+ render();
+ document.querySelector('[data-storage-metric="'+metric+'"]')?.focus();
+}
+document.addEventListener('keydown',event=>{
+ const tab=event.target.closest('[data-storage-metric]');
+ if(!tab||!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
+ event.preventDefault();
+ selectStorageMetric(event.key==='Home'?'bytes':event.key==='End'?'files':storageMetric==='bytes'?'files':'bytes');
 });
